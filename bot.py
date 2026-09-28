@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 flask_app = Flask(__name__)
 @flask_app.route('/')
-def home(): return "V5.5 Live"
+def home(): return "V5.6 Live"
 def run_web(): flask_app.run(host='0.0.0.0', port=int(os.environ.get("PORT",10000)))
 threading.Thread(target=run_web, daemon=True).start()
 
@@ -27,14 +27,13 @@ def calc_rsi(c,p=14):
   d=c[-i]-c[-i-1]
   g+=d if d>0 else 0
   l-=d if d<0 else 0
- if l==0: return 100
  return 100-(100/(1+g/l)) if l!=0 else 100
 
 def scan():
  keo=[]
  try:
   data=requests.get(f"{BINANCE}/api/v3/ticker/24hr",timeout=15).json()
-  usdt=sorted([d for d in data if d['symbol'].endswith('USDT')],key=lambda x:float(x['quoteVolume']),reverse=True)[:80]
+  usdt=sorted([d for d in data if d['symbol'].endswith('USDT')],key=lambda x:float(x['quoteVolume']),reverse=True)[:100]
   for d in usdt:
    try:
     kl=requests.get(f"{BINANCE}/api/v3/klines?symbol={d['symbol']}&interval=4h&limit=50",timeout=8).json()
@@ -46,31 +45,32 @@ def scan():
     if rsi<35 and ema20>ema50: keo.append((d['symbol'],rsi,closes[-1]))
    except: continue
   keo=sorted(keo,key=lambda x:x[1])[:10]
- except Exception as e:
-  print(f"Scan error: {e}")
+ except: pass
  return keo
 
 async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
- await update.message.reply_text("Bot V5.5 Live - Go /quet")
+ await update.message.reply_text("Bot V5.6 Live\n/scan = quet TOP100 RSI<35\n/scan100_4h = y chang\n/auto_scan = quet\n/menu = huong dan")
 
-async def quet(update:Update,context:ContextTypes.DEFAULT_TYPE):
- await update.message.reply_text("Dang quet TOP80 4H (RSI<35 + Golden Cross)...")
+async def quet_func(update:Update,context:ContextTypes.DEFAULT_TYPE):
+ await update.message.reply_text("Dang quet TOP100 4H...")
  keo=scan()
  if not keo:
-  await update.message.reply_text("0/80 coin co RSI<35 luc nay")
+  await update.message.reply_text("0/100 coin co RSI<35 luc nay (Golden Cross)")
   return
- msg=f"💎 TOP {len(keo)} KEO RSI<35 (Golden Cross):\n\n"
+ msg=f"💎 TOP {len(keo)} KEO RSI<35 4H (Golden Cross):\n\n"
  for s,r,p in keo:
-  msg+=f"{s} RSI:{r:.1f} Entry:{fmt(p)} SL:{fmt(p*0.97)} TP:{fmt(p*1.15)}\n"
+  msg+=f"💎 {s} RSI:{r:.1f}\nEntry: {fmt(p)}\nSL: {fmt(p*0.97)} (-3%)\nTP1: {fmt(p*1.10)} (+10%) TP2: {fmt(p*1.20)} (+20%)\n\n"
  await update.message.reply_text(msg)
 
-async def error_handler(update, context):
- print(f"Error: {context.error}")
+async def error_handler(update, context): print(f"Error: {context.error}")
 
 if __name__=="__main__":
  app=ApplicationBuilder().token(TOKEN).build()
  app.add_handler(CommandHandler("start",start))
- app.add_handler(CommandHandler("quet",quet))
+ app.add_handler(CommandHandler("menu",start))
+ app.add_handler(CommandHandler("quet",quet_func))
+ app.add_handler(CommandHandler("scan",quet_func))
+ app.add_handler(CommandHandler("scan100_4h",quet_func))
+ app.add_handler(CommandHandler("auto_scan",quet_func))
  app.add_error_handler(error_handler)
- print("V5.5 starting...")
  app.run_polling()
