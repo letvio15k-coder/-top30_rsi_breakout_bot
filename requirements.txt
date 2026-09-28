@@ -1,5 +1,4 @@
-python-telegram-bot
 Flask
 requests
 pandas
-setuptools
+python-telegram-bot[job-queue]
