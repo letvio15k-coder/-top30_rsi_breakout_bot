@@ -1,78 +1,78 @@
-import os
-import threading
-import requests
-import pandas as pd
+import os, threading, requests, pandas as pd
 from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# ==== 1. GIỮ RENDER LIVE FREE ====
+# Giữ Render Live Free
 flask_app = Flask(__name__)
 @flask_app.route('/')
-def home():
-    return "Bot TOP30 RSI <30 is Live!"
+def home(): return "Bot SPOT Sieu Loc Live!"
 def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    flask_app.run(host='0.0.0.0', port=port)
+    flask_app.run(host='0.0.0.0', port=int(os.environ.get("PORT",10000)))
 threading.Thread(target=run_web, daemon=True).start()
 
-# ==== 2. CẤU HÌNH ====
 TOKEN = os.environ.get("TOKEN")
-TOP30 = ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT","DOTUSDT","LINKUSDT","TRXUSDT","MATICUSDT","LTCUSDT","BCHUSDT","UNIUSDT","XLMUSDT","ETCUSDT","FILUSDT","ATOMUSDT","HBARUSDT","NEARUSDT","APTUSDT","QNTUSDT","VETUSDT","ICPUSDT","ARBUSDT","STXUSDT","OPUSDT","INJUSDT","SUIUSDT"]
+TOP30 = ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","DOGEUSDT","AVAXUSDT","DOTUSDT","LINKUSDT","TRXUSDT","MATICUSDT","LTCUSDT","BCHUSDT","UNIUSDT","ATOMUSDT","ETCUSDT","FILUSDT","NEARUSDT","APTUSDT","ARBUSDT","OPUSDT","SUIUSDT","INJUSDT","STXUSDT","HBARUSDT","VETUSDT","ICPUSDT","QNTUSDT","XLMUSDT","ADAUSDT"]
 
-def get_rsi(prices, period=14):
-    df = pd.DataFrame(prices, columns=['close'])
-    delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return float(rsi.iloc[-1])
-
-def get_price_rsi(symbol, interval="1h"):
+def get_data(symbol, interval="1h", limit=100):
     try:
-        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit=100"
-        data = requests.get(url, timeout=10).json()
-        closes = [float(c[4]) for c in data]
-        price = closes[-1]
-        rsi = get_rsi(closes)
-        return price, rsi
-    except:
-        return None, None
+        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+        kl = requests.get(url, timeout=10).json()
+        closes = [float(x[4]) for x in kl]
+        highs = [float(x[2]) for x in kl]
+        lows = [float(x[3]) for x in kl]
+        return closes, highs, lows
+    except: return None, None, None
 
-# ==== 3. LỆNH SCAN CHỈ LẤY RSI < 30 ====
-async def scan_1h(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔍 Đang quét 30 coin khung 1H - chỉ lọc RSI < 30 QUÁ BÁN MẠNH NHẤT...")
+def calc_rsi(prices, p=14):
+    df = pd.DataFrame(prices, columns=['c'])
+    d = df['c'].diff()
+    g = d.where(d>0,0).rolling(p).mean()
+    l = -d.where(d<0,0).rolling(p).mean()
+    rs = g/l
+    return float((100 - (100/(1+rs))).iloc[-1])
 
-    signals = []
+def calc_ema(prices, p):
+    return pd.DataFrame(prices, columns=['c'])['c'].ewm(span=p).mean().iloc[-1]
+
+async def scan_spot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔍 Đang siêu lọc SPOT 1H (RSI<35 + EMA + Đáy 20 nến)...")
+    keo_ngon = []
     for sym in TOP30:
-        price, rsi = get_price_rsi(sym, "1h")
-        if price and rsi and rsi < 30:
-            signals.append({"symbol": sym, "price": price, "rsi": rsi})
+        closes, highs, lows = get_data(sym, "1h")
+        if not closes: continue
+        price = closes[-1]
+        rsi = calc_rsi(closes)
+        ema20 = calc_ema(closes, 20)
+        ema50 = calc_ema(closes, 50)
+        day20 = min(lows[-20:])
+        dinh20 = max(highs[-20:])
 
-    if not signals:
-        await update.message.reply_text("💤 1H hiện tại KHÔNG CÓ coin nào RSI < 30.\nThị trường đang khỏe, không có quá bán mạnh.")
+        # SIÊU LỌC SPOT: Quá bán + Trend hồi + Gần đáy
+        if rsi < 35 and ema20 > ema50 and price <= day20 * 1.02:
+            keo_ngon.append({"sym":sym, "price":price, "rsi":rsi, "ema20":ema20, "ema50":ema50, "day":day20, "dinh":dinh20})
+
+    if not keo_ngon:
+        await update.message.reply_text("💤 SPOT 1H chưa có kèo thơm đạt 3 điều kiện.\nBTC bạn chụp lúc nãy RSI 40.9 nên chưa vào lọc. Đợi nó về <35 sẽ báo.")
         return
 
-    # Sắp xếp mạnh nhất (RSI thấp nhất) lên đầu, lấy top 5
-    signals = sorted(signals, key=lambda x: x['rsi'])[:5]
-
-    msg = f"🔥🔥 TÍN HIỆU QUÁ BÁN MẠNH 1H (RSI < 30) - {len(signals)} coin mạnh nhất:\n\n"
-    for s in signals:
-        msg += f"🚨 {s['symbol']} ${s['price']:.2f}\n RSI: {s['rsi']:.1f} QUÁ BÁN - SẮP HỒI MẠNH 🔼\n\n"
-
-    msg += "👉 Gõ /auto_scan để tự báo mỗi giờ."
+    keo_ngon = sorted(keo_ngon, key=lambda x: x['rsi'])[:5]
+    msg = f"💎 KÈO SPOT SIÊU LỌC 1H - {len(keo_ngon)} coin:\n\n"
+    for k in keo_ngon:
+        entry = k['price']
+        sl = k['day'] * 0.98
+        tp1 = entry * 1.05
+        tp2 = entry * 1.10
+        msg += f"🚀 {k['sym']}\nGiá: ${entry:.2f} | RSI: {k['rsi']:.1f}\nTrend: EMA20 cắt EMA50 TĂNG\nĐáy 20 nến: ${k['day']:.2f}\n👉 SPOT: Mua {entry:.2f}\nSL: {sl:.2f} (-2%)\nTP1: {tp1:.2f} (+5%) TP2: {tp2:.2f} (+10%)\n\n"
+    msg += "⚠️ Chỉ báo SPOT, không phải lời khuyên đầu tư."
     await update.message.reply_text(msg)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bot TOP30 đã Live!\nGõ /scan1h để quét coin RSI < 30\nGõ /auto_scan để tự động.")
+    await update.message.reply_text("Bot SPOT Siêu Lọc Live!\nGõ /scan_spot để quét kèo SPOT\nGõ /scan1h để quét nhanh RSI<35")
 
-# ==== 4. CHẠY BOT ====
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("scan1h", scan_1h))
-app.add_handler(CommandHandler("scan", scan_1h))
-app.add_handler(CommandHandler("auto_scan", scan_1h))
-
-print("Bot TOP30 RSI <30 starting...")
+app.add_handler(CommandHandler("scan_spot", scan_spot))
+app.add_handler(CommandHandler("scan1h", scan_spot))
+app.add_handler(CommandHandler("auto_scan", scan_spot))
 app.run_polling()
