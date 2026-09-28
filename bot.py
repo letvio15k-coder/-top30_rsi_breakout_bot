@@ -1,11 +1,11 @@
-import os, threading, requests, pandas as pd, time
+import os, threading, requests, pandas as pd
 from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 flask_app = Flask(__name__)
 @flask_app.route('/')
-def home(): return "TOP100 V5 Entry SL TP Live"
+def home(): return "TOP100 V5.1 FIX 0.0000 Live"
 def run_web():
     flask_app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
 threading.Thread(target=run_web, daemon=True).start()
@@ -13,6 +13,15 @@ threading.Thread(target=run_web, daemon=True).start()
 TOKEN = os.environ.get("TOKEN")
 AUTO_CHATS = set()
 BINANCE_BASE = "https://data-api.binance.vision"
+
+# FIX LỖI $0.0000 như ảnh 12:13 PM của bạn - PEPE/SHIB/VTHO
+def fmt(p):
+    if p == 0: return "$0"
+    if p >= 1: return f"${p:.4f}"
+    if p >= 0.1: return f"${p:.6f}"
+    if p >= 0.001: return f"${p:.7f}"
+    if p >= 0.00001: return f"${p:.8f}"
+    return f"${p:.10f}"
 
 def get_top100_symbols():
     try:
@@ -24,7 +33,7 @@ def get_top100_symbols():
         usdt = sorted(usdt, key=lambda x: float(x['quoteVolume']), reverse=True)
         return [d['symbol'] for d in usdt[:100]]
     except:
-        return ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","DOGEUSDT","AVAXUSDT","DOTUSDT","LINKUSDT","TRXUSDT","PEPEUSDT","SHIBUSDT","WIFUSDT","BONKUSDT","PHAUSDT","NILUSDT","VTHOUSDT","INJUSDT","XLMUSDT","BCHUSDT"]*5
+        return ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","DOGEUSDT","AVAXUSDT","PEPEUSDT","SHIBUSDT","PHAUSDT","NILUSDT","VTHOUSDT","INJUSDT","XLMUSDT","BCHUSDT"]*7
 
 def get_closes(sym, interval):
     try:
@@ -55,57 +64,55 @@ def scan_logic(interval):
         ok+=1
         price = closes[-1]; rsi = calc_rsi(closes)
         ema20 = calc_ema(closes,20); ema50 = calc_ema(closes,50)
-        # BẢN A: RSI<35 + EMA20>EMA50 = Entry
         if rsi < 35 and ema20 > ema50:
             keo.append({"sym":sym,"price":price,"rsi":rsi})
     return sorted(keo, key=lambda x: x['rsi'])[:10], ok, len(symbols)
 
 async def scan100_1h(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔍 Quét TOP100 1H BẢN A - Tính Entry/SL/TP...")
+    await update.message.reply_text("🔍 Quét TOP100 1H BẢN A RSI<35...")
     keo, ok, total = scan_logic("1h")
     if not keo:
-        await update.message.reply_text(f"💤 TOP100 1H ({ok}/{total} ok) - RSI<35 chưa có kèo. Thị trường khỏe như lúc 11:19 AM.")
+        await update.message.reply_text(f"💤 TOP100 1H ({ok}/{total} ok) - Chưa có kèo. Thị trường khỏe.")
         return
-    msg = f"💎 TOP100 1H - {len(keo)}/{ok} kèo vàng BẢN A:\n\n"
+    msg = f"💎 TOP100 1H - {len(keo)}/{ok} kèo vàng:\n\n"
     for k in keo:
         entry = k['price']; sl = entry*0.97; tp1 = entry*1.06; tp2 = entry*1.12
-        msg += f"🔥 {k['sym']} RSI:{k['rsi']:.1f}\nEntry: ${entry:.4f}\nSL: ${sl:.4f} (-3%)\nTP1: ${tp1:.4f} (+6%) TP2: ${tp2:.4f} (+12%)\n\n"
+        msg += f"🔥 {k['sym']} RSI:{k['rsi']:.1f}\nEntry: {fmt(entry)}\nSL: {fmt(sl)} (-3%)\nTP1: {fmt(tp1)} (+6%) TP2: {fmt(tp2)} (+12%)\n\n"
     await update.message.reply_text(msg)
 
 async def scan100_4h(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔍 Quét TOP100 4H KIM CƯƠNG - Tính Entry/SL/TP...")
+    await update.message.reply_text("🔍 Quét TOP100 4H KIM CƯƠNG...")
     keo, ok, total = scan_logic("4h")
     if not keo:
         await update.message.reply_text(f"💤 TOP100 4H ({ok}/{total}) chưa có kèo.")
         return
-    msg = f"💎💎 TOP100 4H {len(keo)}/{ok} KÈO KIM CƯƠNG:\n\n"
+    msg = f"💎💎 TOP100 4H {len(keo)}/{ok} KÈO KIM CƯƠNG RSI<35:\n\n"
     for k in keo:
         entry = k['price']; sl = entry*0.97; tp1 = entry*1.10; tp2 = entry*1.20
-        msg += f"💎 {k['sym']} RSI:{k['rsi']:.1f}\nEntry: ${entry:.4f}\nSL: ${sl:.4f} (-3%)\nTP1: ${tp1:.4f} (+10%) TP2: ${tp2:.4f} (+20%)\n\n"
+        msg += f"💎 {k['sym']} RSI:{k['rsi']:.1f}\nEntry: {fmt(entry)}\nSL: {fmt(sl)} (-3%)\nTP1: {fmt(tp1)} (+10%) TP2: {fmt(tp2)} (+20%)\n\n"
     await update.message.reply_text(msg)
 
 async def auto_job(context: ContextTypes.DEFAULT_TYPE):
     if not AUTO_CHATS: return
     keo, ok, _ = scan_logic("1h")
     if keo:
-        msg = f"⏰ AUTO BÁO {len(keo)} KÈO RSI<35:\n\n"
+        msg = f"⏰ AUTO {len(keo)} KÈO RSI<35 ({ok}/100):\n\n"
         for k in keo:
-            entry = k['price']; sl = entry*0.97
-            msg += f"🔥 {k['sym']} RSI:{k['rsi']:.1f}\nEntry ${entry:.4f} SL ${sl:.4f}\n"
+            msg += f"🔥 {k['sym']} RSI:{k['rsi']:.1f} Entry {fmt(k['price'])}\n"
         for chat_id in list(AUTO_CHATS):
             try: await context.bot.send_message(chat_id=chat_id, text=msg)
             except: pass
 
 async def auto_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     AUTO_CHATS.add(update.effective_chat.id)
-    await update.message.reply_text("✅ ĐÃ BẬT AUTO V5!\n- Đủ 100 coin\n- Có Entry/SL/TP đầy đủ\n- /scan100 xem 1H, /scan100_4h xem 4H\n- /auto_off tắt")
+    await update.message.reply_text("✅ ĐÃ BẬT AUTO V5.1 FIX $0.0000!\n- Fix PEPE/SHIB hiện đúng giá\n- Đủ 100 coin\n- /scan100 - 1H\n- /scan100_4h - 4H")
 
 async def auto_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
     AUTO_CHATS.discard(update.effective_chat.id)
     await update.message.reply_text("❌ Đã tắt AUTO.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bot TOP100 V5 Entry/SL/TP Live!\n/scan100 - 1H (+6/+12%)\n/scan100_4h - 4H (+10/+20%)\n/auto_scan - Bật auto\n/auto_off - Tắt")
+    await update.message.reply_text("Bot TOP100 V5.1 Live Fix $0.0000!\n/scan100 - 1H\n/scan100_4h - 4H\n/auto_scan - Bật auto")
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
@@ -116,5 +123,5 @@ app.add_handler(CommandHandler("auto_scan", auto_scan))
 app.add_handler(CommandHandler("auto_off", auto_off))
 app.job_queue.run_repeating(auto_job, interval=3600, first=30)
 
-print("V5 Entry SL TP starting...")
+print("V5.1 FIX 0.0000 starting...")
 app.run_polling()
