@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 flask_app = Flask(__name__)
 @flask_app.route('/')
-def home(): return "TOP30 RSI V5.3 NO PANDAS Live"
+def home(): return "TOP30 RSI V5.4 FIX UPDATER Live"
 def run_web():
     flask_app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
 threading.Thread(target=run_web, daemon=True).start()
@@ -57,7 +57,7 @@ def scan():
     return keo
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bot TOP30 RSI V5.3 Fix Pandas - Gõ /quet")
+    await update.message.reply_text("Bot TOP30 RSI V5.4 Live - Gõ /quet")
 
 async def quet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Đang quét TOP100 4H...")
@@ -65,12 +65,14 @@ async def quet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not keo:
         await update.message.reply_text("0/100 coin, chưa có RSI<35")
         return
-    msg=f"💎 TOP {len(keo)} KÈO KIM CƯƠNG RSI<35 4H:\n\n"
+    msg=f"💎 TOP {len(keo)} KÈO RSI<35 4H (Golden Cross):\n\n"
     for sym,rsi,price in keo:
         msg+=f"{sym} RSI:{rsi:.1f} Entry:{fmt(price)} SL:{fmt(price*0.97)} TP1:{fmt(price*1.10)} TP2:{fmt(price*1.20)}\n"
     await update.message.reply_text(msg)
 
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("quet", quet))
-print("V5.3 NO PANDAS starting..."); app.run_polling()
+if __name__ == "__main__":
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("quet", quet))
+    print("V5.4 starting...")
+    app.run_polling()
